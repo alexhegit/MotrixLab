@@ -127,15 +127,24 @@ class HostTransitionRing:
         num_envs: int,
         cursors: RingCursors | None = None,
         payload_store: SlotPayloadStore | None = None,
-    ):
+        *,
+        data: dict[str, torch.Tensor] | None = None,
+    ) -> None:
         if capacity < 1:
             raise ValueError(f"ring_capacity must be >= 1, got {capacity}")
         self.schema = schema
         self.capacity = capacity
         self.num_envs = num_envs
-        self.data = {
-            field.name: _shared((capacity, *schema.slot_shape(field, num_envs)), field.dtype) for field in schema.fields
-        }
+        # An attaching endpoint borrows the owner's shared storage; allocation
+        # happens only when creating the original ring.
+        self.data = (
+            {
+                field.name: _shared((capacity, *schema.slot_shape(field, num_envs)), field.dtype)
+                for field in schema.fields
+            }
+            if data is None
+            else data
+        )
         self.cursors = cursors if cursors is not None else RingCursors()
         self.payload_store = payload_store
 

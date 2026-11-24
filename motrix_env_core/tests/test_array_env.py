@@ -27,6 +27,9 @@ class _CounterEnv(ArrayEnv):
         groups = {"policy": ObservationGroupSpec(policy_space)}
         if value_space is not None:
             groups["value"] = ObservationGroupSpec(value_space)
+        self._reward = torch.zeros(self.num_envs)
+        self._terminated = torch.zeros(self.num_envs, dtype=torch.bool)
+        self._reward_terms: dict = {}
         self._observation_spec = ObservationSpec(groups)
         self._action_space = gym.spaces.Box(-1.0, 1.0, shape=(1,), dtype=np.float32)
         self.counters = np.zeros(self.num_envs, dtype=np.float32)
@@ -35,6 +38,24 @@ class _CounterEnv(ArrayEnv):
         self.reset_rows: list[torch.Tensor] = []
         self.physics_steps = 0
         self.observation_calls = 0
+
+    @property
+    def state(self) -> ArrayEnvState:
+        return ArrayEnvState(
+            obs=self._obs,
+            reward=self._reward,
+            terminated=self._terminated,
+            truncated=self._truncated,
+            episode_steps=self._episode_steps,
+            reward_terms=self._reward_terms,
+            metrics=self._metrics,
+            final_obs=self._final_obs,
+        )
+
+    def _init_owned_data(self) -> None:
+        self._obs = self._zeros_obs(self.observation_spec)
+        self._reward.zero_()
+        self._terminated.zero_()
 
     @property
     def observation_spec(self) -> ObservationSpec:
@@ -48,27 +69,27 @@ class _CounterEnv(ArrayEnv):
         self.reset_rows.append(env_ids.clone())
         self.counters[env_ids.numpy()] = 0.0
 
-    def apply_action(self, actions: torch.Tensor, state: ArrayEnvState) -> ArrayEnvState:
-        return state
+    def apply_action(self, actions: torch.Tensor, state: ArrayEnvState) -> None:
+        return None
 
     def physics_step(self) -> None:
         self.physics_steps += 1
         self.counters += 1.0
         self.engine_error_codes.copy_(self.next_errors)
 
-    def compute_transition(self, state: ArrayEnvState) -> ArrayEnvState:
+    def compute_transition(self, state: ArrayEnvState) -> None:
         state.reward[:] = torch.from_numpy(self.counters)
         state.terminated[:] = torch.from_numpy(self.next_terminated)
-        return state
+        return None
 
-    def compute_observation(self, state: ArrayEnvState) -> ArrayEnvState:
+    def compute_observation(self, state: ArrayEnvState) -> None:
         self.observation_calls += 1
         counters = torch.from_numpy(self.counters)
         state.obs.policy[:, 0] = counters
         if state.obs.value is not None:
             state.obs.value[:, 0] = counters
             state.obs.value[:, 1] = -counters
-        return state
+        return None
 
     def create_renderer(self, config: RenderConfig) -> SimRenderer:
         raise NotImplementedError("The counter environment has no simulator or renderer")
@@ -160,7 +181,8 @@ def test_physics_error_preserves_time_limit_truncation() -> None:
 def test_observation_spec_controls_state_allocation_and_optional_value(with_value: bool) -> None:
     env = _CounterEnv(with_value=with_value)
     spec = env.observation_spec
-    state = env.init_state()
+    env.init_state()
+    state = env.state
     assert spec.policy.history_length == 1
     assert state.obs.policy.shape[1:] == spec.policy.space.shape
     assert spec.policy.frame_space is spec.policy.space
@@ -188,7 +210,8 @@ def test_manager_env_is_array_env_sibling_of_direct_env() -> None:
 @pytest.mark.parametrize("with_value", [False, True])
 def test_final_obs_absent_on_init_and_nontruncated_step(with_value: bool) -> None:
     env = _FinalCounterEnv(with_value=with_value)
-    initial = env.init_state()
+    env.init_state()
+    initial = env.state
 
     assert initial.final_obs is None
     np.testing.assert_array_equal(initial.obs.policy, np.zeros((4, 1)))
@@ -271,7 +294,9 @@ def test_retained_final_obs_survives_later_steps_and_init_state(with_value: bool
     np.testing.assert_array_equal(later.final_obs.env_ids, [1, 3])
     np.testing.assert_array_equal(later.final_obs.obs.policy, [[23], [43]])
 
-    reinitialized = env.init_state()
+    env.init_state()
+
+    reinitialized = env.state
     assert reinitialized.final_obs is None
     assert retained.final_obs is final
     np.testing.assert_array_equal(final.env_ids, [0, 2])

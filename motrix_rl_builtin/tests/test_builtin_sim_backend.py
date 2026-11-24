@@ -136,6 +136,9 @@ class _AsyncEnv:
 
     def init_state(self):
         self._state = self._make_state(0.0)
+
+    @property
+    def state(self):
         return self._state
 
     def step(self, actions):

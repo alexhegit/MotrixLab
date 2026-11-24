@@ -37,7 +37,8 @@ class SkrlJaxEnvWrap(SkrlWrapper):
         self._renderer = create_renderer(env, render)
 
     def reset(self) -> tuple[jax.Array, Any]:
-        state = self._env.init_state()
+        self._env.init_state()
+        state = self._env.state
         return _as_jnp(state.obs.policy, jnp.float32), env_infos(state)
 
     def step(

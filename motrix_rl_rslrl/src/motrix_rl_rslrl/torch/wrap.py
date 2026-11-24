@@ -113,7 +113,8 @@ class RslrlEnvWrap(VecEnv):
             - observations: TensorDict with observation groups
             - extras: dict with episode information
         """
-        state = self._env.init_state()
+        self._env.init_state()
+        state = self._env.state
         self._state = state
 
         # Reset episode length buffer

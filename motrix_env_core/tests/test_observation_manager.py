@@ -5,8 +5,7 @@ import pytest
 import torch
 
 from motrix_env_core.array.env import EnvObs
-from motrix_env_core.manager.observation_manager import ObservationManager
-from motrix_env_core.manager.observations import ObservationGroupEntry
+from motrix_env_core.manager.observations import ObservationGroupEntry, ObservationManager
 
 
 @pytest.mark.parametrize("history_length", [1, 3])

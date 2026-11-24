@@ -210,7 +210,8 @@ def test_go2_base_mass_and_com_randomization_is_per_env_and_episode_constant():
 
 def test_go2_action_delay_selects_current_or_previous_action_per_env():
     env = registry.make("go2-walk-flat", num_envs=2, mode="train")
-    state = env.init_state()
+    env.init_state()
+    state = env.state
     previous = np.full((2, env._num_action), -0.2, dtype=np.float32)
     current = np.full((2, env._num_action), 0.3, dtype=np.float32)
     env._current_actions.copy_(torch.as_tensor(previous))
@@ -275,7 +276,8 @@ def test_random_planar_velocity_binding_can_sample_a_standing_batch():
 
 def test_go2_partial_reset_only_resamples_finished_environments(monkeypatch: pytest.MonkeyPatch):
     env = registry.make("go2-walk-flat", num_envs=3, mode="train")
-    state = env.init_state()
+    env.init_state()
+    state = env.state
     commands = np.array(
         [
             [0.1, 0.0, 0.0],

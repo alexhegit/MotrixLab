@@ -74,6 +74,8 @@ class TerminationManager:
     def __init__(self, cfg: dict[str, TerminationTermCfg], env: ManagerEnv) -> None:
         self._env = env
         self._terms: dict[str, TerminationTerm] = {}
+        self.output = torch.zeros(env.num_envs, dtype=torch.bool)
+        self.term_masks: torch.Tensor | None = None
         self._initialize(cfg)
 
     def _initialize(self, cfg: dict[str, TerminationTermCfg]) -> None:
@@ -101,6 +103,9 @@ class TerminationManager:
                 *canonical_args,
                 metric_names=created.metric_names,
             )
+
+    def allocate_term_masks(self, num_envs: int, term_count: int) -> None:
+        self.term_masks = torch.empty((num_envs, term_count), dtype=torch.bool)
 
     @property
     def terms(self) -> dict[str, TerminationTerm]:

@@ -349,9 +349,8 @@ def test_engine_error_terminates_and_resets_only_failed_rows(failed_reward: floa
     compute_transition = env.compute_transition
 
     def transition_with_failed_reward(state):
-        state = compute_transition(state)
+        compute_transition(state)
         state.reward[1] = failed_reward
-        return state
 
     monkeypatch.setattr(env, "compute_transition", transition_with_failed_reward)
     status = env.engine_error_codes
@@ -388,9 +387,9 @@ def test_engine_error_terminates_and_resets_only_failed_rows(failed_reward: floa
 def test_public_reset_restarts_only_episode_lane_counters() -> None:
     env = _make_env()
     env.init_state()
-    env._state.episode_steps.copy_(torch.tensor([5, 6, 7]))
+    env._episode_steps.copy_(torch.tensor([5, 6, 7]))
     env.reset(torch.tensor([0]), sim_reset_ids=torch.tensor([1]))
-    assert env._state.episode_steps.tolist() == [0, 6, 7]
+    assert env._episode_steps.tolist() == [0, 6, 7]
 
 
 def test_partial_reset_hands_canonical_rows_to_runtime_and_clears_ctrl() -> None:
@@ -402,7 +401,7 @@ def test_partial_reset_hands_canonical_rows_to_runtime_and_clears_ctrl() -> None
     env.step(torch.full((3, 1), 0.5, dtype=torch.float32))
     assert runtime.ctrl_targets[1, 1] == np.float32(1.0)
 
-    env._state.terminated[:] = torch.tensor([False, True, False])
+    env.termination_manager.output[:] = torch.tensor([False, True, False])
     env._reset_done_envs()
 
     assert len(runtime.reset_calls) == 1
@@ -412,7 +411,7 @@ def test_partial_reset_hands_canonical_rows_to_runtime_and_clears_ctrl() -> None
     np.testing.assert_allclose(rows, np.asarray([[0.5, -0.5]], dtype=np.float32))
     np.testing.assert_allclose(runtime.dof_pos[1], [0.5, -0.5])
     # The frontend ctrl buffer mirrors the backend's reset-time clearing.
-    np.testing.assert_allclose(env._action_writes.buffer("ctrl")[1], np.zeros(1, dtype=np.float32))
+    np.testing.assert_allclose(env._action_manager.writes.buffer("ctrl")[1], np.zeros(1, dtype=np.float32))
 
 
 @pytest.mark.parametrize("compiled", [False, True])

@@ -74,9 +74,9 @@ class AcrobotEnv(DirectEnv):
         actions = torch.clamp(actions, -1.0, 1.0)
         self._ctrl_writes.buffer("ctrl").copy_(actions)
         self._ctrl_writes.execute()
-        return state
+        return None
 
-    def compute_observation(self, state: ArrayEnvState) -> ArrayEnvState:
+    def compute_observation(self, state: ArrayEnvState) -> None:
         dof_pos = self.sim_data["dof_pos"]
         dof_vel = self.sim_data["dof_vel"]
         shoulder_angle = dof_pos[:, 0]
@@ -99,9 +99,9 @@ class AcrobotEnv(DirectEnv):
             ],
             dim=-1,
         )
-        return state.replace(obs=obs)
+        state.obs.policy.copy_(obs)
 
-    def compute_transition(self, state: ArrayEnvState) -> ArrayEnvState:
+    def compute_transition(self, state: ArrayEnvState) -> None:
         self.sim_data.execute()
         inputs = self.sim_data
         dof_pos = inputs["dof_pos"]
@@ -142,7 +142,7 @@ class AcrobotEnv(DirectEnv):
 
         state.reward[:] = rwd
         state.terminated[:] = terminated
-        return state
+        return None
 
     def reset(self, env_ids: torch.Tensor) -> None:
         num_reset = env_ids.numel()
@@ -163,6 +163,6 @@ class AcrobotEnv(DirectEnv):
         Reset the environments that are done
         """
         super()._reset_done_envs()
-        done = self._state.done
+        done = self._terminated | self._truncated
         if bool(done.any()):
             self._step_count[done] = 0

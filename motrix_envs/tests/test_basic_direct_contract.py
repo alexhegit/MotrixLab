@@ -102,7 +102,8 @@ def test_compute_transition_executes_once_and_never_touches_obs(env_name: str) -
     obs_before = state.obs.policy.clone()
 
     calls = _spy_execute(env)
-    transitioned = env.compute_transition(state)
+    env.compute_transition(state)
+    transitioned = state
 
     # Exactly one read-program execution, at the top of compute_transition.
     assert len(calls) == 1
@@ -131,7 +132,8 @@ def test_compute_observation_reads_cache_without_executing(env_name: str) -> Non
     }
 
     calls = _spy_execute(env)
-    observed = env.compute_observation(state)
+    env.compute_observation(state)
+    observed = state
 
     # Observation must be served purely from cache.
     assert calls == []

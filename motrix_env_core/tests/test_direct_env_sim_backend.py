@@ -209,21 +209,21 @@ class _FakeDirectEnv(DirectEnv[_FakeDirectCfg]):
     def action_space(self):
         return self._action_space
 
-    def apply_action(self, actions: torch.Tensor, state: ArrayEnvState) -> ArrayEnvState:
+    def apply_action(self, actions: torch.Tensor, state: ArrayEnvState) -> None:
         ctrl = self._ctrl_writes.buffer("ctrl")
         ctrl[:] = actions.detach().cpu().numpy().astype(np.float32, copy=False)
         self._ctrl_writes.execute()
-        return state
+        return None
 
-    def compute_transition(self, state: ArrayEnvState) -> ArrayEnvState:
+    def compute_transition(self, state: ArrayEnvState) -> None:
         inputs = self.sim_data
         state.obs.policy[:] = torch.from_numpy(
             np.concatenate([inputs["dof_pos"], inputs["dof_vel"], inputs["actuator_ctrls"]], axis=-1)
         )
-        state.reward = torch.ones((self.num_envs,), dtype=torch.float32)
-        state.terminated = torch.zeros((self.num_envs,), dtype=torch.bool)
+        state.reward.fill_(1.0)
+        state.terminated.fill_(False)
         self.sim_data.execute()
-        return state
+        return None
 
     def reset(self, env_ids: torch.Tensor):
         env_ids = env_ids.detach().cpu().numpy()
@@ -243,7 +243,8 @@ def _make_env(num_envs: int = 3) -> _FakeDirectEnv:
 def test_direct_env_spec_describes_one_policy_frame() -> None:
     env = _make_env()
     spec = env.observation_spec
-    state = env.init_state()
+    env.init_state()
+    state = env.state
     assert spec.policy.history_length == 1
     assert state.obs.policy.shape[1:] == spec.policy.space.shape
     assert spec.policy.frame_space is spec.policy.space
@@ -285,7 +286,7 @@ def test_direct_env_partial_reset_passes_canonical_rows() -> None:
 
     env.init_state()
     runtime.reset_calls.clear()
-    env._state.terminated[:] = torch.tensor([False, True, False])
+    env._terminated[:] = torch.tensor([False, True, False])
     env._reset_done_envs()
 
     assert len(runtime.reset_calls) == 1
@@ -308,3 +309,40 @@ def test_direct_frontend_does_not_import_motrixsim() -> None:
     code = "import sys\nimport motrix_env_core.direct.env\nsys.exit(0 if 'motrixsim' not in sys.modules else 1)\n"
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_direct_env_clears_metrics_between_steps() -> None:
+    """Per-step metrics semantics: no write, no stale leak.
+
+    The pipeline clears the owner metrics dict before each step, so a task
+    that skips (or partially performs) its metrics write publishes an empty
+    view instead of the previous step's values, and content writes start
+    from a clean dict without a manual clear.
+    """
+
+    class _MetricEnv(_FakeDirectEnv):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.transitions = 0
+
+        def compute_transition(self, state: ArrayEnvState) -> None:
+            super().compute_transition(state)
+            self.transitions += 1
+            if self.transitions == 1:
+                state.metrics.update({"first": torch.ones(self.num_envs)})
+                state.reward_terms.update({"first": torch.ones(self.num_envs)})
+            elif self.transitions == 2:
+                state.metrics["second"] = torch.zeros(self.num_envs)
+                state.reward_terms["second"] = torch.zeros(self.num_envs)
+
+    env = _MetricEnv(_FakeDirectCfg(), 3, backend="fake-direct")
+    actions = torch.zeros(3, env.action_space.shape[0])
+    first = env.step(actions)
+    assert set(first.metrics) == {"first"}
+    assert set(first.reward_terms) == {"first"}
+    second = env.step(actions)
+    assert set(second.metrics) == {"second"}
+    assert set(second.reward_terms) == {"second"}
+    third = env.step(actions)
+    assert third.metrics == {}
+    assert third.reward_terms == {}
